@@ -2,12 +2,8 @@ name: Weekly Finance Reports
 
 on:
   schedule:
-    - cron: '45 13 * * 1'   # 9:45 AM ET every weekday (13:45 UTC)
-    - cron: '45 13 * * 2'
-    - cron: '45 13 * * 3'
-    - cron: '45 13 * * 4'
-    - cron: '45 13 * * 5'   
-  workflow_dispatch:        # Allow manual run
+    - cron: '30 13 * * 1-5'   # 9:30 AM EST, Monday through Friday   
+  workflow_dispatch:        # Allow manual run & trigger
 
 jobs:
   run-script:
@@ -36,11 +32,8 @@ jobs:
           pip install google-api-python-client
           pip install google-auth-httplib2
           pip install google-auth-oauthlib
+          pip install pytz
 
       - name: Run finance script
         run: |
-          if [ "$(date +%u)" -eq 1 ]; then
-            python finance.py monday
-          elif [ "$(date +%u)" -eq 5 ]; then
-            python finance.py friday
-          fi
+          python finance.py monday

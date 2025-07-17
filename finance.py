@@ -8,7 +8,10 @@ Weekly market analysis and trade performance review with Gemini & Gmail
 import os
 import json
 import yfinance as yf
-from datetime import datetime
+import sys
+import time
+import pytz
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 import google.generativeai as genai
 from google.generativeai.types import HarmCategory, HarmBlockThreshold
@@ -67,6 +70,25 @@ def get_market_data():
         except Exception as e:
             summary.append(f"{name} ({symbol}): Error retrieving data.")
     return "\n".join(summary)
+
+
+def wait_for_market_data(symbol="^GSPC", max_wait_minutes=15):
+    print(f"⏳ Waiting for up-to-date market data on {symbol}...")
+
+    est = pytz.timezone("US/Eastern")
+    today = datetime.now(est).date()
+    deadline = datetime.now() + timedelta(minutes=max_wait_minutes)
+
+    while datetime.now() < deadline:
+        ticker = yf.Ticker(symbol)
+        df = ticker.history(period="1d", interval="1m")
+        if not df.empty and df.index[-1].date() == today:
+            print(f"✅ Market data found for {today} at {df.index[-1]}")
+            return df
+        print(f"❌ Market data for {today} not yet available. Retrying in 60s...")
+        time.sleep(60)
+
+    raise TimeoutError(f"❌ Market data for {today} not available after waiting {max_wait_minutes} minutes.")
 
 # Gemini prompt
 def build_gemini_prompt():
@@ -201,7 +223,9 @@ def run_monday_analysis():
         print("Analysis generation failed.")
 
 if __name__ == "__main__":
-    import sys
+    # Wait for market data before continuing
+    wait_for_market_data(symbol="^GSPC")
+
     if len(sys.argv) > 1 and sys.argv[1].lower() == "monday":
         run_monday_analysis()
     else:
