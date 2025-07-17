@@ -2,8 +2,11 @@ name: Weekly Finance Reports
 
 on:
   schedule:
-    - cron: '45 13 * * 1'   # 9:45 AM ET on Mondays (13:45 UTC)
-    - cron: '18 18 * * 5'   # 2:00 PM ET on Fridays (18:00 UTC)
+    - cron: '45 13 * * 1'   # 9:45 AM ET every weekday (13:45 UTC)
+    - cron: '45 13 * * 2'
+    - cron: '45 13 * * 3'
+    - cron: '45 13 * * 4'
+    - cron: '45 13 * * 5'   
   workflow_dispatch:        # Allow manual run
 
 jobs:
