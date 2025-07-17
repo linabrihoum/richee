@@ -68,7 +68,7 @@ def get_market_data():
             summary.append(f"{name} ({symbol}): Error retrieving data.")
     return "\n".join(summary)
 
-# Helper: Build prompt
+# Gemini prompt
 def build_gemini_prompt():
     date_str = datetime.now().strftime("%B %d, %Y")
     market_summary = get_market_data()
