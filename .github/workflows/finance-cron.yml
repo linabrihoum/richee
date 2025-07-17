@@ -34,6 +34,14 @@ jobs:
           pip install google-auth-oauthlib
           pip install pytz
 
+      - name: Recreate credentials.json from secret
+        run: |
+          echo "${{ secrets.CREDENTIALS_JSON_B64 }}" | base64 -d > credentials.json
+
       - name: Run finance script
         run: |
           python finance.py monday
+
+      - name: Clean up credentials.json
+        if: always()
+        run: rm credentials.json
