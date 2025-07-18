@@ -208,4 +208,6 @@ __marimo__/
 
 
 token.json
+token.b64
 credentials.json
+credentials.b64

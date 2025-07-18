@@ -34,9 +34,10 @@ jobs:
           pip install google-auth-oauthlib
           pip install pytz
 
-      - name: Recreate credentials.json from secret
+      - name: Decode credentials and token
         run: |
-          echo "${{ secrets.CREDENTIALS_JSON_B64 }}" | base64 -d > credentials.json
+          echo "${{ secrets.CREDENTIALS_JSON_B64 }}" | base64 --decode > credentials.json
+          echo "${{ secrets.TOKEN_JSON_B64 }}" | base64 --decode > token.json
 
       - name: Run finance script
         run: |
@@ -44,4 +45,6 @@ jobs:
 
       - name: Clean up credentials.json
         if: always()
-        run: rm credentials.json
+        run: |
+          rm credentials.json
+          rm token.json

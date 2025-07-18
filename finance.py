@@ -183,7 +183,7 @@ def store_analysis(analysis):
 def send_email(subject, body):
     creds = None
     if os.path.exists('token.json'):
-        creds = Credentials.from_authorized_user_file('token.json', SCOPES)
+        creds = Credentials.from_authorized_user_file("token.json", SCOPES)
     # If there are no credentials, let the user log in
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
@@ -209,7 +209,7 @@ def send_email(subject, body):
     except HttpError as error:
         print(f'An error occurred while sending the email: {error}')
 
-# Main handler for Monday
+# Run finance analysis based on the market for current day
 def run_monday_analysis():
     print(f"Running Monday analysis ({datetime.now().strftime('%Y-%m-%d %H:%M')})...")
     prompt = build_gemini_prompt()
