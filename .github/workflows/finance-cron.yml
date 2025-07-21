@@ -3,6 +3,7 @@ name: Weekly Finance Reports
 on:
   schedule:
     - cron: '30 13 * * 1-5'   # 9:30 AM EST, Monday through Friday   
+    - cron: '0 19 * * 5'      # 3:00 PM EST, Friday only
   workflow_dispatch:        # Allow manual run & trigger
 
 jobs:
@@ -41,7 +42,11 @@ jobs:
 
       - name: Run finance script
         run: |
-          python finance.py monday
+          if [ "$(date +%u)" -eq 5 ] && [ "$(date +%H)" -ge 19 ]; then
+            python finance.py friday
+          else
+            python finance.py daily
+          fi
 
       - name: Clean up credentials.json
         if: always()

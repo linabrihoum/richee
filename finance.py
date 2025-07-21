@@ -25,6 +25,7 @@ from email.message import EmailMessage
 import base64
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+from pathlib import Path
 
 # Load environment variables
 load_dotenv()
@@ -163,14 +164,27 @@ def run_gemini(prompt):
         return None
 
 # Create analysis
+def get_week_monday(date=None):
+    """Return the date (YYYY-MM-DD) of the Monday for the week of the given date (or today)."""
+    if date is None:
+        date = datetime.now()
+    monday = date - timedelta(days=date.weekday())
+    return monday.strftime("%Y-%m-%d")
+
+# Update store_analysis to use weekly_reports/<monday>/YYYY-MM-DD.json
+
 def store_analysis(analysis):
-    date_str = datetime.now().strftime("%Y-%m-%d")
+    date = datetime.now()
+    date_str = date.strftime("%Y-%m-%d")
+    week_monday = get_week_monday(date)
+    folder = Path("weekly_reports") / week_monday
+    folder.mkdir(parents=True, exist_ok=True)
     data = {
         "date": date_str,
         "analysis": analysis
     }
     try:
-        with open(f"weekly_analysis_{date_str}.json", "w") as f:
+        with open(folder / f"{date_str}.json", "w") as f:
             json.dump(data, f)
         with open("weekly_analysis.json", "w") as f:
             json.dump(data, f)
@@ -178,6 +192,58 @@ def store_analysis(analysis):
     except Exception as e:
         print(f"Storage Error: {str(e)}")
         return False
+
+# Helper to load all daily reports for the current week
+
+def load_weekly_reports(week_monday=None):
+    if week_monday is None:
+        week_monday = get_week_monday()
+    folder = Path("weekly_reports") / week_monday
+    reports = []
+    if not folder.exists():
+        return reports
+    for file in sorted(folder.glob("*.json")):
+        try:
+            with open(file, "r") as f:
+                reports.append(json.load(f))
+        except Exception as e:
+            print(f"Error reading {file}: {e}")
+    return reports
+
+# Friday analysis: summarize the week and email
+
+def run_friday_analysis(week_monday=None):
+    if week_monday is None:
+        week_monday = get_week_monday()
+    reports = load_weekly_reports(week_monday)
+    if not reports:
+        print("No daily reports to summarize the week.")
+        return
+    # Compose a summary prompt for Gemini
+    week_dates = f"{week_monday} to {(datetime.strptime(week_monday, '%Y-%m-%d') + timedelta(days=6)).strftime('%Y-%m-%d')}"
+    daily_analyses = "\n\n".join([f"{r['date']}\n{r['analysis']}" for r in reports])
+    summary_prompt = f"""
+You are my personal swing-trade assistant. Here are my daily market analyses for the week {week_dates}:
+
+{daily_analyses}
+
+Please provide a concise summary of the week's market performance, notable trends, and any actionable insights for the coming week. Use plain sentences, no bullet points or markdown.
+"""
+    summary = run_gemini(summary_prompt)
+    if summary:
+        # Store and email the summary
+        summary_data = {
+            "week": week_monday,
+            "summary": summary,
+            "dates": [r["date"] for r in reports]
+        }
+        folder = Path("weekly_reports") / week_monday
+        with open(folder / "weekly_summary.json", "w") as f:
+            json.dump(summary_data, f)
+        send_email(f"📊 Weekly Market Summary ({week_dates})", summary)
+        print("Weekly summary sent.")
+    else:
+        print("Failed to generate weekly summary.")
 
 # Send email
 def send_email(subject, body):
@@ -210,13 +276,13 @@ def send_email(subject, body):
         print(f'An error occurred while sending the email: {error}')
 
 # Run finance analysis based on the market for current day
-def run_monday_analysis():
-    print(f"Running Monday analysis ({datetime.now().strftime('%Y-%m-%d %H:%M')})...")
+def run_daily_analysis():
+    print(f"Running Daily analysis ({datetime.now().strftime('%Y-%m-%d %H:%M')})...")
     prompt = build_gemini_prompt()
     analysis = run_gemini(prompt)
     if analysis:
         if store_analysis(analysis):
-            send_email("📈 Weekly Market Analysis", analysis)
+            send_email("📈 Daily Market Analysis", analysis)
         else:
             print("Failed to store analysis.")
     else:
@@ -226,7 +292,26 @@ if __name__ == "__main__":
     # Wait for market data before continuing
     wait_for_market_data(symbol="^GSPC")
 
-    if len(sys.argv) > 1 and sys.argv[1].lower() == "monday":
-        run_monday_analysis()
+    today = datetime.now()
+    if len(sys.argv) > 1:
+        arg = sys.argv[1].lower()
+        if arg == "daily":
+            run_daily_analysis()
+        elif arg == "friday":
+            run_friday_analysis()
+        else:
+            print("Usage: python finance.py [daily|friday]")
     else:
-        print("Usage: python finance.py monday")
+        # If today is Monday, check if last week's summary is missing and send it
+        if today.weekday() == 0:  # Monday
+            last_monday = today - timedelta(days=7)
+            last_week_monday_str = get_week_monday(last_monday)
+            last_week_folder = Path("weekly_reports") / last_week_monday_str
+            summary_file = last_week_folder / "weekly_summary.json"
+            if last_week_folder.exists() and not summary_file.exists():
+                print("Previous week's summary missing. Sending now...")
+                run_friday_analysis(week_monday=last_week_monday_str)
+            else:
+                print("No action needed. Usage: python finance.py [daily|friday]")
+        else:
+            print("Usage: python finance.py [daily|friday]")
