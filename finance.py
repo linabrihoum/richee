@@ -203,9 +203,15 @@ def load_weekly_reports(week_monday=None):
     if not folder.exists():
         return reports
     for file in sorted(folder.glob("*.json")):
+        # Skip the weekly summary file
+        if file.name == "weekly_summary.json":
+            continue
         try:
             with open(file, "r") as f:
-                reports.append(json.load(f))
+                data = json.load(f)
+                # Only include files that have the expected structure for daily reports
+                if "date" in data and "analysis" in data:
+                    reports.append(data)
         except Exception as e:
             print(f"Error reading {file}: {e}")
     return reports
