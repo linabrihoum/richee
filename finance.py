@@ -7,7 +7,7 @@ Weekly market analysis and trade performance review with Gemini & Gmail
 """
 import os
 import json
-import yfinance as yf
+import requests
 import sys
 import time
 import pytz
@@ -30,6 +30,7 @@ from pathlib import Path
 # Load environment variables
 load_dotenv()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+TIINGO_API_KEY = os.getenv("TIINGO_API_KEY")
 GOOGLE_SERVICE_ACCOUNT_FILE = os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE")
 EMAIL_SENDER = os.getenv("EMAIL_SENDER")
 EMAIL_RECIPIENTS = os.getenv("EMAIL_RECIPIENTS").split(",")
@@ -40,54 +41,87 @@ genai.configure(api_key=GEMINI_API_KEY)
 # If modifying scopes, delete the file token.json
 SCOPES = ['https://www.googleapis.com/auth/gmail.send']
 
-# Helper: Collect market data
+# Helper: Collect market data using Tiingo
 def get_market_data():
     tickers = {
-        "S&P 500": "^GSPC",
-        "Nasdaq": "^IXIC",
-        "Dow Jones": "^DJI",
-        "VIX Volatility": "^VIX",
-        "10Y Treasury": "^TNX",
-        "Bitcoin": "BTC-USD",
-        "Ethereum": "ETH-USD",
+        "S&P 500": "SPY",
+        "Nasdaq": "QQQ",
+        "Dow Jones": "DIA",
+        "VIX Volatility": "VXX",
+        "10Y Treasury": "TLT",
+        "Bitcoin": "BTCUSD",
+        "Ethereum": "ETHUSD",
         "Apple": "AAPL",
         "Microsoft": "MSFT",
-        "Google": "GOOG",
+        "Google": "GOOGL",
         "Amazon": "AMZN",
         "Nvidia": "NVDA"
     }
 
     summary = []
+    headers = {"Authorization": f"Token {TIINGO_API_KEY}"}
+    
     for name, symbol in tickers.items():
         try:
-            data = yf.Ticker(symbol).history(period="1d")
-            if data.empty:
-                continue
-            latest = data.iloc[-1]
-            price = latest["Close"]
-            change = latest["Close"] - latest["Open"]
-            pct = (change / latest["Open"]) * 100
-            summary.append(f"{name} ({symbol}): {price:.2f} ({change:+.2f}, {pct:+.2f}%)")
+            # Get latest price data
+            url = f"https://api.tiingo.com/tiingo/daily/{symbol}/prices"
+            params = {
+                "token": TIINGO_API_KEY,
+                "startDate": datetime.now().strftime("%Y-%m-%d"),
+                "endDate": datetime.now().strftime("%Y-%m-%d"),
+                "format": "json"
+            }
+            
+            response = requests.get(url, headers=headers, params=params)
+            response.raise_for_status()
+            
+            if response.json():
+                data = response.json()[0]
+                price = data["close"]
+                change = data["close"] - data["open"]
+                pct = (change / data["open"]) * 100
+                summary.append(f"{name} ({symbol}): {price:.2f} ({change:+.2f}, {pct:+.2f}%)")
+            else:
+                summary.append(f"{name} ({symbol}): No data available.")
         except Exception as e:
-            summary.append(f"{name} ({symbol}): Error retrieving data.")
+            summary.append(f"{name} ({symbol}): Error retrieving data - {str(e)}")
+    
     return "\n".join(summary)
 
 
-def wait_for_market_data(symbol="^GSPC", max_wait_minutes=15):
+def wait_for_market_data(symbol="SPY", max_wait_minutes=15):
     print(f"⏳ Waiting for up-to-date market data on {symbol}...")
 
     est = pytz.timezone("US/Eastern")
     today = datetime.now(est).date()
     deadline = datetime.now() + timedelta(minutes=max_wait_minutes)
+    
+    headers = {"Authorization": f"Token {TIINGO_API_KEY}"}
 
     while datetime.now() < deadline:
-        ticker = yf.Ticker(symbol)
-        df = ticker.history(period="1d", interval="1m")
-        if not df.empty and df.index[-1].date() == today:
-            print(f"✅ Market data found for {today} at {df.index[-1]}")
-            return df
-        print(f"❌ Market data for {today} not yet available. Retrying in 60s...")
-        time.sleep(60)
+        try:
+            url = f"https://api.tiingo.com/tiingo/daily/{symbol}/prices"
+            params = {
+                "token": TIINGO_API_KEY,
+                "startDate": today.strftime("%Y-%m-%d"),
+                "endDate": today.strftime("%Y-%m-%d"),
+                "format": "json"
+            }
+            
+            response = requests.get(url, headers=headers, params=params)
+            response.raise_for_status()
+            
+            data = response.json()
+            if data and len(data) > 0:
+                latest_data = data[0]
+                print(f"✅ Market data found for {today} at {latest_data.get('date', 'N/A')}")
+                return latest_data
+            else:
+                print(f"❌ Market data for {today} not yet available. Retrying in 60s...")
+                time.sleep(60)
+        except Exception as e:
+            print(f"❌ Error fetching data for {today}: {str(e)}. Retrying in 60s...")
+            time.sleep(60)
 
     raise TimeoutError(f"❌ Market data for {today} not available after waiting {max_wait_minutes} minutes.")
 
@@ -296,7 +330,7 @@ def run_daily_analysis():
 
 if __name__ == "__main__":
     # Wait for market data before continuing
-    wait_for_market_data(symbol="^GSPC")
+    wait_for_market_data(symbol="SPY")
 
     today = datetime.now()
     if len(sys.argv) > 1:
