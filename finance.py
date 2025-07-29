@@ -245,8 +245,8 @@ def get_technical_indicators(symbol, days=50):
         volume_ratio = current_volume / avg_volume if avg_volume and current_volume else None
         
         # Volatility (20-day)
-        if len(prices) >= 20:
-            returns = np.diff(prices[-20:]) / prices[-21:-1]
+        if len(prices) >= 21:  # Need at least 21 prices for 20 returns
+            returns = np.diff(prices[-21:]) / prices[-21:-1]
             volatility = np.std(returns) * np.sqrt(252) * 100  # Annualized %
         else:
             volatility = None
@@ -953,21 +953,39 @@ Please provide a concise summary of the week's market performance, notable trend
 
 # Send email
 def send_email(subject, body):
-    creds = None
-    if os.path.exists('token.json'):
-        creds = Credentials.from_authorized_user_file("token.json", SCOPES)
-    # If there are no credentials, let the user log in
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
-            creds = flow.run_local_server(port=0)
-        # Save credentials
-        with open('token.json', 'w') as token:
-            token.write(creds.to_json())
-
     try:
+        creds = None
+        if os.path.exists('token.json'):
+            creds = Credentials.from_authorized_user_file("token.json", SCOPES)
+        
+        # If there are no credentials, let the user log in
+        if not creds or not creds.valid:
+            if creds and creds.expired and creds.refresh_token:
+                try:
+                    creds.refresh(Request())
+                except Exception as refresh_error:
+                    logger.warning(f"Token refresh failed: {refresh_error}")
+                    # Remove the expired token file
+                    if os.path.exists('token.json'):
+                        os.remove('token.json')
+                    creds = None
+            
+            if not creds:
+                # Only try to create new credentials if we have the credentials file
+                if os.path.exists('credentials.json'):
+                    flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
+                    creds = flow.run_local_server(port=0)
+                    # Save credentials
+                    with open('token.json', 'w') as token:
+                        token.write(creds.to_json())
+                else:
+                    logger.error("No credentials.json file found. Cannot send email.")
+                    return False
+        
+        if not creds:
+            logger.error("No valid credentials available. Cannot send email.")
+            return False
+
         service = build('gmail', 'v1', credentials=creds)
         message = EmailMessage()
         message.set_content(body)
@@ -977,9 +995,14 @@ def send_email(subject, body):
 
         encoded = base64.urlsafe_b64encode(message.as_bytes()).decode()
         send_message = service.users().messages().send(userId="me", body={'raw': encoded}).execute()
-        print(f"Email sent successfully!")
+        logger.info("Email sent successfully!")
+        return True
     except HttpError as error:
-        print(f'An error occurred while sending the email: {error}')
+        logger.error(f'An error occurred while sending the email: {error}')
+        return False
+    except Exception as e:
+        logger.error(f'Unexpected error in send_email: {e}')
+        return False
 
 def run_daily_analysis():
     logger.info(f"Starting daily analysis at {datetime.now().strftime('%Y-%m-%d %H:%M')}")
@@ -1002,8 +1025,10 @@ def run_daily_analysis():
                 full_analysis = analysis + "\n\n📰 SECTOR NEWS\n" + "="*30 + "\nNo sector news available at this time."
             
             if store_analysis(full_analysis):
-                send_email("📈 Daily Market Analysis", full_analysis)
-                logger.info("Daily analysis with sector news completed and sent successfully.")
+                if send_email("📈 Daily Market Analysis", full_analysis):
+                    logger.info("Daily analysis with sector news completed and sent successfully.")
+                else:
+                    logger.warning("Analysis completed but email sending failed.")
             else:
                 logger.error("Failed to store analysis.")
         else:
