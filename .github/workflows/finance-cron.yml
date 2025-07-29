@@ -2,8 +2,8 @@ name: Weekly Finance Reports
 
 on:
   schedule:
-    - cron: '30 13 * * 1-5'   # 9:30 AM EST, Monday through Friday   
-    - cron: '0 19 * * 5'      # 3:00 PM EST, Friday only
+    - cron: '30 13 * * 1-5'   # 9:30 AM EST, Monday through Friday (Market Open)
+    - cron: '0 19 * * 5'      # 3:00 PM EST, Friday only (Weekly Summary)
   workflow_dispatch:        # Allow manual run & trigger
 
 jobs:
@@ -45,9 +45,19 @@ jobs:
 
       - name: Run finance script
         run: |
-          if [ "$(date +%u)" -eq 5 ] && [ "$(date +%H)" -ge 19 ]; then
+          # Get current time in EST
+          EST_TIME=$(TZ='America/New_York' date '+%H:%M')
+          DAY_OF_WEEK=$(date +%u)
+          
+          echo "Current time (EST): $EST_TIME"
+          echo "Day of week: $DAY_OF_WEEK"
+          
+          # Determine which analysis to run
+          if [ "$DAY_OF_WEEK" -eq 5 ] && [ "$(date +%H)" -ge 19 ]; then
+            echo "Running Friday weekly summary..."
             python finance.py friday
           else
+            echo "Running daily market analysis..."
             python finance.py daily
           fi
 
