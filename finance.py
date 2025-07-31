@@ -973,6 +973,12 @@ def send_email(subject, body):
             if not creds:
                 # Only try to create new credentials if we have the credentials file
                 if os.path.exists('credentials.json'):
+                    # Check if we're in a headless environment (like GitHub Actions)
+                    if os.environ.get('CI') or not os.environ.get('DISPLAY'):
+                        logger.error("Cannot authenticate in headless environment. Please use service account credentials.")
+                        logger.error("For GitHub Actions, you need to generate a new token locally and update the TOKEN_JSON_B64 secret.")
+                        return False
+                    
                     flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
                     creds = flow.run_local_server(port=0)
                     # Save credentials
