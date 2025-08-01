@@ -38,10 +38,38 @@ jobs:
           pip install google-auth-oauthlib
           pip install pytz
 
-      - name: Decode credentials and token
+      - name: Check and decode secrets
         run: |
-          echo "${{ secrets.CREDENTIALS_JSON_B64 }}" | base64 --decode > credentials.json
-          echo "${{ secrets.TOKEN_JSON_B64 }}" | base64 --decode > token.json
+          # Check if secrets are set
+          if [ -z "${{ secrets.TOKEN_JSON_B64 }}" ]; then
+            echo "❌ Error: TOKEN_JSON_B64 secret is not set"
+            echo "Please add the TOKEN_JSON_B64 secret to your repository"
+            exit 1
+          fi
+          
+          if [ -z "${{ secrets.CREDENTIALS_JSON_B64 }}" ]; then
+            echo "❌ Error: CREDENTIALS_JSON_B64 secret is not set"
+            echo "Please add the CREDENTIALS_JSON_B64 secret to your repository"
+            exit 1
+          fi
+          
+          # Decode token with error handling
+          echo "${{ secrets.TOKEN_JSON_B64 }}" | base64 -d > token.json
+          if [ $? -ne 0 ]; then
+            echo "❌ Error: Failed to decode TOKEN_JSON_B64"
+            echo "Please check that the secret is properly base64 encoded"
+            exit 1
+          fi
+          
+          # Decode credentials with error handling
+          echo "${{ secrets.CREDENTIALS_JSON_B64 }}" | base64 -d > credentials.json
+          if [ $? -ne 0 ]; then
+            echo "❌ Error: Failed to decode CREDENTIALS_JSON_B64"
+            echo "Please check that the secret is properly base64 encoded"
+            exit 1
+          fi
+          
+          echo "✅ Credentials and token decoded successfully"
 
       - name: Run finance script
         run: |
@@ -64,5 +92,5 @@ jobs:
       - name: Clean up credentials.json
         if: always()
         run: |
-          rm credentials.json
-          rm token.json
+          rm -f credentials.json
+          rm -f token.json
